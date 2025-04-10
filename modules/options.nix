@@ -86,20 +86,65 @@ let
           };
         }
       );
+      apply = map (
+        x:
+        if builtins.isPath x then
+          {
+            name = "path-plugin-${builtins.substring 0 7 (builtins.hashString "md5" (toString x))}";
+            python3Dependencies = _: [ ];
+            outPath = x;
+          }
+        else
+          x
+      );
     in
     lib.mkOption {
-      type = types.listOf (
+      apply =
+        x:
+        if builtins.isAttrs x then
+          (apply x.start) ++ (map (x: x // { optional = true; }) (apply x.opt))
+        else
+          apply x;
+
+      type =
+        let
+          type = types.listOf (
+            types.oneOf [
+              (lib.mkOptionType {
+                name = "path";
+                description = "literal path";
+                descriptionClass = "noun";
+                check = builtins.isPath;
+                merge = lib.mergeEqualOption;
+              })
+              pluginType
+            ]
+          );
+        in
         types.oneOf [
-          (lib.mkOptionType {
-            name = "path";
-            description = "literal path";
-            descriptionClass = "noun";
-            check = builtins.isPath;
-            merge = lib.mergeEqualOption;
+          (types.submodule {
+            options = {
+              opt = lib.mkOption {
+                default = [ ];
+                description = ''
+                  A list of plugins to place in /opt
+                  (not automatically loaded)
+                '';
+                inherit type apply;
+              };
+              start = lib.mkOption {
+                default = [ ];
+                description = ''
+                  A list of plugins to place in /start
+                  (automatically loaded)
+                '';
+                inherit type apply;
+              };
+
+            };
           })
-          pluginType
-        ]
-      );
+          type
+        ];
       default = [ ];
       description = "A list of plugins to load";
       example = lib.literalExpression ''
@@ -133,17 +178,7 @@ let
           }
         ]
       '';
-      apply = map (
-        x:
-        if builtins.isPath x then
-          {
-            name = "path-plugin-${builtins.substring 0 7 (builtins.hashString "md5" (toString x))}";
-            python3Dependencies = _: [ ];
-            outPath = x;
-          }
-        else
-          x
-      );
+
     };
 
 in
@@ -276,6 +311,7 @@ in
         ]
       '';
     };
+
     plugins = pluginsOption;
 
     extraBinPath = lib.mkOption {
